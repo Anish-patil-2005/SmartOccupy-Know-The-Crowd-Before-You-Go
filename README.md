@@ -277,7 +277,6 @@ Receives data from ESP32.
 ## 🔮 Future Scope
 
 * **AI Prediction:** Predict footfall for next hour/day.
-* **Multi-Gate Logic:** Combine multiple gates for large malls.
 * **Mobile App:** React Native version for customers.
 
 ---
@@ -286,6 +285,6 @@ Receives data from ESP32.
 
 This project is open-source and available under the **MIT License**.
 
-Built with ❤️ by *Your Name*
+Built with ❤️ by *Anish Patil* | *Sanket Wagh*
 
 
