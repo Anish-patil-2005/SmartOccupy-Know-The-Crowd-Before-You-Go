@@ -4,6 +4,7 @@
 A full-stack IoT solution that bridges the physical and digital worlds.  
 This system tracks real-time footfall in retail stores using IR sensors and provides actionable analytics for shop owners while helping customers shop safely by displaying live crowd levels.
 
+# Live at : https://smart-occupy-know-the-crowd-before.vercel.app/
 ---
 
 ## 📑 Table of Contents
