@@ -4,14 +4,19 @@
 #define ENTRY_SENSOR 4
 #define EXIT_SENSOR 5
 
+// --- 1. CREDENTIALS ---
 const char* ssid = "YOUR_WIFI_NAME";
 const char* password = "YOUR_WIFI_PASSWORD";
 
-// 1. Update this to your local IP while testing, or your domain in production
-const char* serverName = "http://192.168.X.X:3000/api/iot/update"; 
+// --- 2. PRODUCTION SETTINGS ---
+// Vercel URL (Use your live link)
+const char* serverName = "https://smart-occupy-know-the-crowd-before.vercel.app/api/iot/update"; 
 
-// 2. This must match the "IoT Device ID" you registered in your Portal
+// This must match the "IoT Device ID" in your Admin Dashboard
 const char* deviceId = "IoT_1214"; 
+
+// This MUST match the ESP32_API_KEY you set in Vercel Environment Variables
+const char* apiKey = "jdhfksgdghiwuhu376273hjfhdsk"; 
 
 int count = 0;
 bool entryLock = false;
@@ -31,10 +36,18 @@ void setup() {
     Serial.print(".");
   }
 
-  Serial.println("\nConnected to WiFi");
+  Serial.println("\n✅ Connected to WiFi");
 }
 
 void loop() {
+  // Check WiFi status and reconnect if lost (Self-Healing)
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("Reconnecting to WiFi...");
+    WiFi.begin(ssid, password);
+    delay(1000); 
+    return; // Skip the rest of the loop until reconnected
+  }
+
   int entryState = digitalRead(ENTRY_SENSOR);
   int exitState = digitalRead(EXIT_SENSOR);
 
@@ -43,7 +56,6 @@ void loop() {
     count++;
     entryLock = true;
     Serial.println("Person Entered");
-    // Send 1 entry to the server
     sendCountToServer(1, 0); 
   }
 
@@ -56,7 +68,6 @@ void loop() {
     if (count > 0) count--;
     exitLock = true;
     Serial.println("Person Exited");
-    // Send 1 exit to the server
     sendCountToServer(0, 1);
   }
 
@@ -67,19 +78,20 @@ void loop() {
   delay(50);
 }
 
-// Updated function to accept entries/exits and send correct JSON
-
 void sendCountToServer(int entries, int exits) {
   if (WiFi.status() == WL_CONNECTED) {
     HTTPClient http;
     
-    // Set a timeout so a slow server doesn't hang your sensors
+    // Set timeout to 2 seconds so the sensors don't freeze on slow WiFi
     http.setTimeout(2000); 
 
     http.begin(serverName);
+    
+    // --- SECURITY HEADERS ---
     http.addHeader("Content-Type", "application/json");
+    http.addHeader("x-api-key", apiKey); // This is your "Digital ID card"
 
-    // Using a dynamic JSON buffer or String 
+    // Constructing JSON
     String jsonData = "{\"deviceId\":\"" + String(deviceId) + 
                      "\",\"entries\":" + String(entries) + 
                      ",\"exits\":" + String(exits) + "}";
@@ -94,7 +106,6 @@ void sendCountToServer(int entries, int exits) {
 
     http.end();
   } else {
-    Serial.println("WiFi Disconnected. Data lost!");
-    // Future: Add a buffer here to save data for later
+    Serial.println("WiFi Disconnected. Data not sent.");
   }
 }
