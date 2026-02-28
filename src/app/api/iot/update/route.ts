@@ -1,75 +1,67 @@
-import { NextResponse } from 'next/server';
-import { connectDB } from '@/lib/db';
-import FootfallLog from '@/models/FootfallLog';
-import Store from '@/models/Store';
+import { NextResponse } from "next/server";
+import { connectDB } from "@/lib/db";
+import FootfallLog from "@/models/FootfallLog";
+import Store from "@/models/Store";
 
 export async function POST(req: Request) {
   try {
-    // 1. Parse the incoming JSON from ESP32
-    // matches: { "deviceId": "store_01", "entries": 1, "exits": 0 }
     const body = await req.json();
     const { deviceId, entries = 0, exits = 0 } = body;
 
-    if (!deviceId) {
-      return NextResponse.json({ error: "Missing Device ID" }, { status: 400 });
-    }
+    if (!deviceId) return NextResponse.json({ error: "Missing ID" }, { status: 400 });
 
     await connectDB();
-
-    // 2. Find the Store linked to this Sensor ID
-    const store = await Store.findOne({ iotDeviceId: deviceId });
-
-    if (!store) {
-      // If ESP32 sends an ID that isn't in the DB, reject it
-      return NextResponse.json({ error: "Device not registered in Admin Dashboard" }, { status: 404 });
-    }
-
-    // 3. Logic: Daily Reset Check
-    // If the last update was yesterday, reset "Today's Visits" to 0
     const now = new Date();
+
+    // STEP 1: Atomic Update
+    // We update the numbers directly in MongoDB to prevent race conditions.
+    const store = await Store.findOneAndUpdate(
+      { iotDeviceId: deviceId },
+      {
+        $inc: {
+          currentCount: entries - exits,
+          todayVisits: entries,
+        },
+      },
+      { new: true } 
+    );
+
+    if (!store) return NextResponse.json({ error: "Device not found" }, { status: 404 });
+
+    // STEP 2: Safety & Reset Logic
+    // We only call .save() if we actually need to correct a value (like < 0 or new day)
+    let needsSave = false;
+
+    // Prevent negative counts
+    if (store.currentCount < 0) {
+      store.currentCount = 0;
+      needsSave = true;
+    }
+
+    // Daily Reset Check
     const lastReset = new Date(store.lastResetDate || 0);
-    
-    // Check if day, month, or year is different
     if (now.toDateString() !== lastReset.toDateString()) {
-      store.todayVisits = 0;
+      store.todayVisits = entries; 
       store.lastResetDate = now;
+      needsSave = true;
     }
 
-    // 4. Logic: Calculate New Counts
-    // Prevent negative numbers (e.g., if sensor error causes extra exits)
-    let newCount = store.currentCount + (entries - exits);
-    if (newCount < 0) newCount = 0;
+    if (needsSave) await store.save();
 
-    store.currentCount = newCount;
-    
-    // Only add to "Today's Visits" if people entered
-    if (entries > 0) {
-      store.todayVisits += entries;
-    }
+    // STEP 3: Analytics Logging
+    // Using Promise.all makes this faster
+    const logs = [];
+    if (entries > 0) logs.push(FootfallLog.create({ storeId: store._id, action: "entry", timestamp: now }));
+    if (exits > 0) logs.push(FootfallLog.create({ storeId: store._id, action: "exit", timestamp: now }));
+    await Promise.all(logs);
 
-    // 5. Save to Database (This updates the Dashboard instantly)
-    await store.save();
+    console.log(`✅ ${store.name} Updated | Live: ${store.currentCount}`);
 
-    // 6. Analytics: Log the event
-    // This allows us to make charts later (e.g., "Peak hour was 6 PM")
-    if (entries > 0) {
-      await FootfallLog.create({ storeId: store._id, action: 'entry', timestamp: now });
-    }
-    if (exits > 0) {
-      await FootfallLog.create({ storeId: store._id, action: 'exit', timestamp: now });
-    }
-
-    console.log(`✅ Update Success: ${store.name} | Count: ${newCount}`);
-
-    // 7. Reply to ESP32
-    return NextResponse.json({ 
-      success: true, 
-      newCount: store.currentCount 
-    });
+    return NextResponse.json({ success: true, newCount: store.currentCount });
 
   } catch (error) {
     console.error("IoT Update Error:", error);
-    return NextResponse.json({ error: "Server Internal Error" }, { status: 500 });
+    return NextResponse.json({ error: "Server Error" }, { status: 500 });
   }
 }
 // ```
@@ -81,8 +73,6 @@ export async function POST(req: Request) {
 // 1.  **The Code ID:** In your Arduino code, you wrote `const char* deviceId = "store_01";`.
 // 2.  **The Database ID:** In your **Admin Dashboard**, you must Edit your store and set "IoT Device ID" to `store_01`.
 // 3.  **The Network:** Your ESP32 must be on the **same WiFi** as your laptop, and the `serverUrl` must use your laptop's IP (not `localhost`).
-
-
 
 // ### **3. How to Test It (Without waiting for ESP32)**
 

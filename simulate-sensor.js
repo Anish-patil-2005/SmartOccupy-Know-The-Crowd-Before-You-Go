@@ -1,7 +1,8 @@
 // simulate-sensor.js
 
 // List of all active sensors
-const SENSORS = ["IoT_1214", "IOT_1245"]; 
+const SENSORS = ["IoT_1214", "IOT_1245","IoT_0909"]; 
+
 const API_URL = "http://127.0.0.1:3000/api/iot/update";
 
 async function sendPulse() {
